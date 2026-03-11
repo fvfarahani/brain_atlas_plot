@@ -4,9 +4,21 @@ import os
 import nibabel as nib
 import numpy as np
 import matplotlib.pyplot as plt
-import warnings
+import contextlib
+import sys
 
-warnings.filterwarnings("ignore")
+# -------------------------
+# Helper to silence nibabel messages
+# -------------------------
+@contextlib.contextmanager
+def suppress_stderr():
+    with open(os.devnull, "w") as devnull:
+        old_stderr = sys.stderr
+        sys.stderr = devnull
+        try:
+            yield
+        finally:
+            sys.stderr = old_stderr
 
 # -------------------------
 # Paths
@@ -49,18 +61,14 @@ for metric in metrics:
         if not (os.path.exists(fileA) and os.path.exists(fileB)):
             continue
 
-        imgA = nib.load(fileA)
-        imgB = nib.load(fileB)
+        with suppress_stderr():
+            imgA = nib.load(fileA)
+            imgB = nib.load(fileB)
 
         zA = np.array(imgA.dataobj).squeeze()
         zB = np.array(imgB.dataobj).squeeze()
 
-        mask = np.isfinite(zA) & np.isfinite(zB)
-
-        if mask.sum() == 0:
-            continue
-
-        r = np.corrcoef(zA[mask], zB[mask])[0, 1]
+        r = np.corrcoef(zA, zB)[0, 1]
 
         corrs[metric].append(r)
 
@@ -75,21 +83,19 @@ data = [corrs[m] for m in metrics]
 fig, ax = plt.subplots(figsize=(10,6))
 
 # violin plot
-vp = ax.violinplot(data, showmeans=False, showmedians=True)
+ax.violinplot(data, showmeans=False, showmedians=True)
 
-# scatter points (each run)
+# scatter individual runs
 for i, values in enumerate(data, start=1):
     x = np.random.normal(i, 0.04, size=len(values))
     ax.scatter(x, values, s=8, alpha=0.35)
 
-# labels
 ax.set_xticks(range(1, len(metrics)+1))
 ax.set_xticklabels([m.replace("_"," ") for m in metrics], rotation=35)
 
 ax.set_ylabel("Split-half spatial correlation (Z maps)")
 ax.set_title("HCP1 Split-Half Replicability (500 runs)")
 
-# styling
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 ax.grid(False)
@@ -101,6 +107,10 @@ plt.tight_layout()
 # -------------------------
 pdf_path = os.path.join(plot_dir, "HCP1_split_half_spatial_correlation.pdf")
 plt.savefig(pdf_path, dpi=300)
+
+# show in Spyder
+plt.show()
+
 plt.close()
 
 print(f"Saved → {pdf_path}")
