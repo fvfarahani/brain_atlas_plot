@@ -1,0 +1,98 @@
+#%% HCP1 Split-Half Spatial Correlation Distribution (500 runs)
+
+import os
+import nibabel as nib
+import numpy as np
+import matplotlib.pyplot as plt
+
+# -------------------------
+# Paths
+# -------------------------
+root_split = "/Users/fvashegh/Library/CloudStorage/OneDrive-JNJ/CNT/shared/naio_shared/hcp_ya/analysis/palm/output_hcp1_IQ_split/"
+plot_dir = "/Users/fvashegh/Library/CloudStorage/OneDrive-JNJ/CNT/neural_metrics/plots/"
+os.makedirs(plot_dir, exist_ok=True)
+
+# -------------------------
+# Metrics
+# -------------------------
+metrics = [
+    "ACF_timescale", "centroid_freq", "embedding_dist", "entropy_pairs",
+    "forecast_error", "low_freq_power", "periodicity", "SD"
+]
+
+n_runs = 500
+
+# -------------------------
+# Compute correlations
+# -------------------------
+corrs = {m: [] for m in metrics}
+
+for metric in metrics:
+
+    for run in range(1, n_runs + 1):
+
+        fileA = os.path.join(
+            root_split,
+            f"{metric}_IQ_splitA_run{run}_dat_zstat.pscalar.nii"
+        )
+
+        fileB = os.path.join(
+            root_split,
+            f"{metric}_IQ_splitB_run{run}_dat_zstat.pscalar.nii"
+        )
+
+        if not (os.path.exists(fileA) and os.path.exists(fileB)):
+            print(f"Missing run {run} for {metric}")
+            continue
+
+        zA = nib.load(fileA).get_fdata().squeeze()
+        zB = nib.load(fileB).get_fdata().squeeze()
+
+        mask = np.isfinite(zA) & np.isfinite(zB)
+
+        if mask.sum() == 0:
+            continue
+
+        r = np.corrcoef(zA[mask], zB[mask])[0,1]
+
+        corrs[metric].append(r)
+
+# -------------------------
+# Prepare plotting data
+# -------------------------
+data = [corrs[m] for m in metrics]
+
+# -------------------------
+# Plot
+# -------------------------
+fig, ax = plt.subplots(figsize=(10,6))
+
+# Violin plot
+parts = ax.violinplot(data, showmeans=False, showmedians=True)
+
+# Scatter individual runs
+for i, values in enumerate(data, start=1):
+    x = np.random.normal(i, 0.04, size=len(values))
+    ax.scatter(x, values, alpha=0.4, s=8)
+
+# Styling
+ax.set_xticks(range(1, len(metrics)+1))
+ax.set_xticklabels([m.replace("_"," ") for m in metrics], rotation=35)
+
+ax.set_ylabel("Split-half spatial correlation (Z maps)")
+ax.set_title("HCP1 Split-Half Replicability (500 runs)")
+
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.grid(False)
+
+plt.tight_layout()
+
+# -------------------------
+# Save
+# -------------------------
+pdf_path = os.path.join(plot_dir, "HCP1_split_half_spatial_correlation.pdf")
+plt.savefig(pdf_path, dpi=300)
+plt.close()
+
+print(f"Saved → {pdf_path}")
