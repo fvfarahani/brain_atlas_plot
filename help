@@ -1,11 +1,11 @@
-#%% Vertex-wise reproducibility map
+#%% Vertex-wise reproducibility + effect maps
 
 import os
 import numpy as np
 import nibabel as nib
 
 # -------------------------
-# Project paths
+# Paths
 # -------------------------
 PROJECT_DIR = "/Users/fvashegh/Library/CloudStorage/OneDrive-JNJ/CNT/neural_metrics/"
 map_dir = os.path.join(PROJECT_DIR, "maps")
@@ -22,40 +22,68 @@ ref_pscalar = nib.load(os.path.join(PROJECT_DIR, "data/GABRA5_10566.pscalar.nii"
 n_vertices, n_runs, n_metrics = splitA_mat.shape
 
 # -------------------------
-# Compute vertex reproducibility
+# Loop metrics
 # -------------------------
 for m_idx, metric in enumerate(metrics):
 
-    print(f"Computing reproducibility map: {metric}")
+    print(f"Processing: {metric}")
 
     A = splitA_mat[:, :, m_idx]
     B = splitB_mat[:, :, m_idx]
 
-    # center across runs
-    A = A - A.mean(axis=1, keepdims=True)
-    B = B - B.mean(axis=1, keepdims=True)
+    # -------------------------------------------------
+    # 1. Vertex reproducibility (correlation across runs)
+    # -------------------------------------------------
+    A_center = A - A.mean(axis=1, keepdims=True)
+    B_center = B - B.mean(axis=1, keepdims=True)
 
-    # vectorized correlation
-    numerator = np.sum(A * B, axis=1)
-    denom = np.sqrt(np.sum(A**2, axis=1) * np.sum(B**2, axis=1))
+    numerator = np.sum(A_center * B_center, axis=1)
+    denom = np.sqrt(np.sum(A_center**2, axis=1) * np.sum(B_center**2, axis=1))
 
     r_vertex = numerator / denom
 
-    # reshape to CIFTI format
-    r_vertex = r_vertex[np.newaxis, :]
+    # -------------------------------------------------
+    # 2. Median Z effect map
+    # -------------------------------------------------
+    all_Z = np.concatenate([A, B], axis=1)
+    median_Z = np.median(all_Z, axis=1)
 
-    # create image
-    out_img = nib.Cifti2Image(
-        r_vertex,
-        header=ref_pscalar.header,
-        nifti_header=ref_pscalar.nifti_header
-    )
+    # -------------------------------------------------
+    # 3. Absolute median Z (effect magnitude)
+    # -------------------------------------------------
+    abs_median_Z = np.median(np.abs(all_Z), axis=1)
 
-    out_file = os.path.join(
-        map_dir,
-        f"{metric}_vertex_split_half_reproducibility.pscalar.nii"
-    )
+    # -------------------------------------------------
+    # 4. Sign alignment
+    # fraction of runs where sign(splitA)==sign(splitB)
+    # -------------------------------------------------
+    sign_alignment = np.mean(np.sign(A) == np.sign(B), axis=1)
 
-    nib.save(out_img, out_file)
+    # -------------------------------------------------
+    # Save maps
+    # -------------------------------------------------
+    maps = {
+        "vertex_reproducibility": r_vertex,
+        "median_Z": median_Z,
+        "abs_median_Z": abs_median_Z,
+        "sign_alignment": sign_alignment
+    }
 
-    print(f"Saved → {out_file}")
+    for name, data in maps.items():
+
+        data = data[np.newaxis, :]
+
+        img = nib.Cifti2Image(
+            data,
+            header=ref_pscalar.header,
+            nifti_header=ref_pscalar.nifti_header
+        )
+
+        out_file = os.path.join(
+            map_dir,
+            f"{metric}_{name}.pscalar.nii"
+        )
+
+        nib.save(img, out_file)
+
+        print(f"Saved → {out_file}")
