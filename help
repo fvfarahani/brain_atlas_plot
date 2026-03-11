@@ -4,6 +4,9 @@ import os
 import nibabel as nib
 import numpy as np
 import matplotlib.pyplot as plt
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # -------------------------
 # Paths
@@ -29,36 +32,40 @@ corrs = {m: [] for m in metrics}
 
 for metric in metrics:
 
+    print(f"Processing {metric}")
+
     for run in range(1, n_runs + 1):
 
         fileA = os.path.join(
             root_split,
-            f"{metric}_IQ_splitA_run{run}_dat_zstat.pscalar.nii"
+            f"{metric}_IQ_splitA_run{run}_dat_ztstat.pscalar.nii"
         )
 
         fileB = os.path.join(
             root_split,
-            f"{metric}_IQ_splitB_run{run}_dat_zstat.pscalar.nii"
+            f"{metric}_IQ_splitB_run{run}_dat_ztstat.pscalar.nii"
         )
 
         if not (os.path.exists(fileA) and os.path.exists(fileB)):
-            print(f"Missing run {run} for {metric}")
             continue
 
-        zA = nib.load(fileA).get_fdata().squeeze()
-        zB = nib.load(fileB).get_fdata().squeeze()
+        imgA = nib.load(fileA)
+        imgB = nib.load(fileB)
+
+        zA = np.array(imgA.dataobj).squeeze()
+        zB = np.array(imgB.dataobj).squeeze()
 
         mask = np.isfinite(zA) & np.isfinite(zB)
 
         if mask.sum() == 0:
             continue
 
-        r = np.corrcoef(zA[mask], zB[mask])[0,1]
+        r = np.corrcoef(zA[mask], zB[mask])[0, 1]
 
         corrs[metric].append(r)
 
 # -------------------------
-# Prepare plotting data
+# Prepare data
 # -------------------------
 data = [corrs[m] for m in metrics]
 
@@ -67,21 +74,22 @@ data = [corrs[m] for m in metrics]
 # -------------------------
 fig, ax = plt.subplots(figsize=(10,6))
 
-# Violin plot
-parts = ax.violinplot(data, showmeans=False, showmedians=True)
+# violin plot
+vp = ax.violinplot(data, showmeans=False, showmedians=True)
 
-# Scatter individual runs
+# scatter points (each run)
 for i, values in enumerate(data, start=1):
     x = np.random.normal(i, 0.04, size=len(values))
-    ax.scatter(x, values, alpha=0.4, s=8)
+    ax.scatter(x, values, s=8, alpha=0.35)
 
-# Styling
+# labels
 ax.set_xticks(range(1, len(metrics)+1))
 ax.set_xticklabels([m.replace("_"," ") for m in metrics], rotation=35)
 
 ax.set_ylabel("Split-half spatial correlation (Z maps)")
 ax.set_title("HCP1 Split-Half Replicability (500 runs)")
 
+# styling
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 ax.grid(False)
